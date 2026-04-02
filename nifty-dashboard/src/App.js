@@ -10,6 +10,8 @@ import {
   ResponsiveContainer,
   Scatter,
   Brush,
+  BarChart,
+  Cell
 } from "recharts";
 
 function App() {
@@ -20,35 +22,74 @@ function App() {
     borderRadius : "12px",
     boxShadow : "0 4px 12px rgba(0, 0, 0, 0.3)",
     textAlign : "center",
-    marginBottom : "20px"
+    marginBottom : "20px",
+    minHeight : "140px",
+    display : "flex",
+    flexDirection : "column",
+    justifyContent : "center"
   }
   const [dailySummary, setDailySummary] = useState([]);
   const [intradayData, setIntradayData] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
-  const CustomTooltip = ({active, payload, label}) => {
-    if (active && payload && payload.length){
+  const [hypothesis, setHypothesis] = useState(null);
+  const [rangeData, setRangeData] = useState(null);
+
+  const getStats = (arr) => {
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+
+    return {
+      min : sorted[0],
+      max : sorted[sorted.length - 1],
+      median : sorted[mid]
+    };
+  };
+
+  const CustomTooltip = ({active, payload, label}) => { 
+    if (active && payload && payload.length){ 
+      return ( 
+      <div style = {{ 
+        background : "#1e293b", 
+        padding : "10px", 
+        borderRadius : "8px", 
+        border : "1px solid #334155" 
+      }}> 
+        <p style = {{color : "#e2e8f0"}}>{label}</p> 
+        <p style = {{color : "#60a5fa"}}> 
+          Price : {payload[0]?.value} 
+        </p> 
+        <p style = {{color : "#f59e0b"}}> 
+          Volatility : {payload[1]?.value} 
+        </p> 
+      </div> 
+    ); 
+  } 
+  return null; 
+};
+
+  const ActivityToolTip = ({active, payload, label}) => {
+    if(active && payload && payload.length){
+      const vol = payload.find(p => p.dataKey === "rolling_vol_15");
+      const range = payload.find(p => p.dataKey === "range");
+
       return (
         <div style = {{
           background : "#1e293b",
           padding : "10px",
           borderRadius : "8px",
-          border : "1px solid #334155"
+          border : "1px solid #334155",
+          color : "#e2e8f0"
         }}>
-          <p style = {{color : "#e2e8f0"}}>{label}</p>
-          <p style = {{color : "#60a5fa"}}>
-            Price : {payload[0]?.value}
-          </p>
-          <p style = {{color : "#f59e0b"}}>
-            Volatility : {payload[1]?.value}
-          </p>
+          <p>Index: {label}</p>
+          <p style = {{color : "#f59e0b"}}>Volatility : {vol?.value?.toFixed(4)}</p>
+          <p style = {{color : "#22c55e"}}>Range : {range?.value?.toFixed(4)}</p>
         </div>
       );
     }
     return null;
   };
-
   const CandleTooltip = ({active, payload}) => {
-    if (active && payload && payload.length){
+    if(active && payload && payload.length){
       const data = payload[0].payload;
       return (
         <div style = {{
@@ -63,6 +104,29 @@ function App() {
           <p style = {{color : "#22c55e"}}>High: {data.high}</p>
           <p style = {{color : "#ef4444"}}>Low: {data.low}</p>
           <p style = {{color : "#f59e0b"}}>Close: {data.close}</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const RangeToolTip = ({active, payload}) => {
+    if(active && payload && payload.length){
+      const data = payload[0].payload;
+      return (
+        <div style = {{
+          background : "#1e293b",
+          padding : "10px",
+          borderRadius : "8px", 
+          border : "1px solid #334155",
+          color : "#e2e8f0"
+        }}>
+          <p><strong>{data.type}</strong></p>
+          <p style = {{
+            color : "#60a5fa"
+          }}>
+            Avg Range: {data.value.toFixed(2)}
+          </p>
         </div>
       );
     }
@@ -155,6 +219,20 @@ function App() {
     .catch((err) => console.error(err));
 }, [selectedDate]);
 
+  useEffect(() =>{
+    fetch("http://127.0.0.1:8000/hypothesis-test")
+    .then(res => res.json())
+    .then(data => setHypothesis(data))
+    .catch(err => console.error(err));
+  },[]);
+
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/range-distribution")
+    .then(res => res.json())
+    .then(data => setRangeData(data))
+    .catch(err => console.error(err));
+  }, []);
+
   return (
     <div style = {{ 
       padding : "20px",
@@ -165,7 +243,12 @@ function App() {
       }}>
       <h1 style = {{color : "#f8fafc"}}>Nifty 50 Volatility Dashboard</h1>
 
-      <div style = {{display : "flex" , gap : "20px", marginBottom : "20px"}}>
+      <div style = {{
+        display : "grid",
+        gridTemplateColumns : "repeat(auto-fit, minmax(220px, 1fr))",
+        gap : "20px",
+        marginBottom : "20px"
+        }}>
         <div style = {cardStyle}>
           <h3>Total Days</h3>
           <p style = {{fontSize : "22px"}}>{dailySummary.length}</p>
@@ -184,6 +267,21 @@ function App() {
             {dailySummary.filter(d => d.regime === "Low Vol").length}
           </p>
         </div>
+
+        {hypothesis &&(
+          <div style = {cardStyle}>
+            <h3>Hypothesis Testing</h3>        
+              <p>High Vol Avg Range : {hypothesis.high_vol_mean_range.toFixed(2)}</p>
+              <p>Normal Avg Range : {hypothesis.normal_vol_mean_range.toFixed(2)}</p>
+              <p>p-value : {hypothesis.p_value.toFixed(4)}</p>
+              <p style = {{
+                marginTop : "5px",
+                fontWeight : "bold",
+                color : hypothesis.p_value < 0.05 ? "#22c55e" : "#ef4444"}}>
+                {hypothesis.p_value < 0.05 ? "Statistically significant ✅" : "Not significant ❌"}
+              </p>
+          </div>
+        )}
       </div>
 
       <h2 style = {{color : "#e2e8f0"}}>Daily Volatility Trend</h2>
@@ -257,8 +355,11 @@ function App() {
               <LineChart data={intradayData} margin = {{top : 10, right : 30, left : 0, bottom : 0}}>
                 <CartesianGrid strokeDasharray="3 3" />
 
-                <XAxis dataKey="time" 
-                tick = {{fontSize : 10}} domain = {['auto','auto']}/>
+                <XAxis 
+                dataKey = "time" 
+                domain = {['dataMin', 'dataMax']}
+                tick = {{fontSize : 10}}
+                />
 
                 <YAxis yAxisId="left" />
                 <YAxis yAxisId="right" domain = {['auto','auto']} orientation="right" />
@@ -267,11 +368,12 @@ function App() {
                   content={<CustomTooltip />}
                   cursor={{ stroke: "#94a3b8", strokeWidth: 1, strokeDasharray : "3 3" }}
                   wrapperStyle={{outline : "none"}}
+                  shared = {true}
                 />
 
-                <Line yAxisId="right" type="natural" dataKey="close" stroke="#60a5fa" strokeWidth={2} dot={false} activeDot = {{r : 6}} />
-                <Line yAxisId="left" type="natural" dataKey="rolling_vol_15" stroke="#f59e0b" strokeWidth={2} dot={false} activeDot = {{r : 6}} />
-                <Line yAxisId="left" type="natural" dataKey="range" stroke="#22c55e" strokeWidth={2} dot={false} activeDot = {{r : 6}} />
+                <Line yAxisId="right" type="natural" dataKey="close" stroke="#60a5fa" strokeWidth={2} dot={false} activeDot = {{r : 6}} isAnimationActive = {false}/>
+                <Line yAxisId="left" type="natural" dataKey="rolling_vol_15" stroke="#f59e0b" strokeWidth={2} dot={false} activeDot = {{r : 6}} isAnimationActive = {false}/>
+                <Line yAxisId="left" type="natural" dataKey="range" stroke="#22c55e" strokeWidth={2} dot={false} activeDot = {{r : 6}} isAnimationActive = {false}/>
 
                 {/* SPIKES */}
                 <Scatter
@@ -280,10 +382,11 @@ function App() {
                   dataKey = "rolling_vol_15" 
                   fill="red"
                   shape = "circle"
+                  isAnimationActive = {false}
                 />
 
                 {/* ZOOM */}
-                <Brush dataKey="index" height={30} />
+                <Brush dataKey="time" height={30} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -311,7 +414,9 @@ function App() {
                 <YAxis yAxisId="left" />
                 <YAxis yAxisId="right" orientation="right" />
 
-                <Tooltip />
+                <Tooltip 
+                content = {<ActivityToolTip />}
+                cursor = {{stroke : "#94a3b8", strokeWidth : 1, strokeDasharray : "3 3"}}/>
 
                 {/* VOLATILITY */}
                 <Line
@@ -412,6 +517,46 @@ function App() {
           </tbody>
         </table>
       </div>
+
+      <h2>Range Distribution (High vs Normal Vol)</h2>
+
+      {rangeData &&(
+        <div style={{
+          background : "white",
+          padding : "20px",
+          borderRadius : "10px"
+        }}>
+          {(() => {
+            const high = getStats(rangeData.high_vol);
+            const normal = getStats(rangeData.normal_vol);
+
+            return (
+              <ResponsiveContainer width = "100%" height = {300}>
+                <BarChart
+                data = {[
+                  {type : "Normal", value : hypothesis.normal_vol_mean_range},
+                  {type : "High Vol", value : hypothesis.high_vol_mean_range}
+                ]}
+                >
+                  <CartesianGrid strokeDasharray = "3 3" />
+                  <XAxis dataKey = "type" />
+                  <YAxis />
+                  <Tooltip content = {<RangeToolTip />} 
+                  cursor={{ fill: "rgba(148,163,184,0.1)" }}/>
+
+                  <Bar 
+                    dataKey = "value"
+                    radius={[6, 6, 0, 0]}
+                    activeBar = {{fill : "#facc15"}} >
+                    <Cell fill = "#22c55e" />
+                    <Cell fill = "#ef4444" />
+                  </Bar>
+                  </BarChart>
+              </ResponsiveContainer>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }

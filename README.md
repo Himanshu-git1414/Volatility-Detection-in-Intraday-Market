@@ -6,4 +6,5 @@ Financial markets exhibit rapid price fluctuations, especially in intraday tradi
 This project focuses on analyzing intraday volatility in the Nifty 50 index, identifying volatility spikes, classifying market regimes, and predicting the next candle’s opening price using statistical and machine learning techniques.
 
 Github Link :- "https://github.com/Himanshu-git1414/Volatility-Detection-in-Intraday-Market"
+
 Deploy : https://deploy-vdiim.vercel.app/
